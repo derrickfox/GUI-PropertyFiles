@@ -34,11 +34,18 @@ By default, the server scans the parent folder of `config-explorer`. Users can a
 
 The interactive folder picker works best in Chromium-based browsers such as Chrome and Edge.
 
-PowerShell example:
+macOS / Linux example:
+
+```bash
+export SCAN_ROOT="/path/to/target-config-root"
+npm run dev
+```
+
+Windows PowerShell example:
 
 ```powershell
 $env:SCAN_ROOT='C:\path\to\target-config-root'
-npm.cmd run dev
+npm run dev
 ```
 
 Example layout when sharing:

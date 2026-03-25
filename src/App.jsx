@@ -2,6 +2,44 @@ import { useEffect, useMemo, useState } from "react";
 
 const PROPERTY_EXTENSION = ".properties";
 
+function getPathSegments(path = "") {
+  return path.split("/").filter(Boolean).filter((segment) => segment !== ".");
+}
+
+function getEnvironmentName(filePath) {
+  const segments = getPathSegments(filePath);
+
+  if (segments.length < 2) {
+    return "";
+  }
+
+  return segments[0];
+}
+
+function getEnvironmentRelativePath(filePath) {
+  const segments = getPathSegments(filePath);
+
+  if (segments.length < 2) {
+    return "";
+  }
+
+  return segments.slice(1).join("/");
+}
+
+function collectEnvironmentOptions(files = []) {
+  const environments = new Set();
+
+  for (const file of files) {
+    const environment = getEnvironmentName(file.path);
+
+    if (environment) {
+      environments.add(environment);
+    }
+  }
+
+  return Array.from(environments).sort((left, right) => left.localeCompare(right));
+}
+
 function parsePropertyLine(line) {
   const trimmed = line.trim();
 
@@ -79,6 +117,91 @@ function comparePropertiesData(leftEntries, rightEntries) {
     leftOnly,
     rightOnly,
     valueDifferences
+  };
+}
+
+function hasDiffContent(diff) {
+  return Boolean(
+    diff.leftOnly.length || diff.rightOnly.length || diff.valueDifferences.length
+  );
+}
+
+function buildReporterData(fileRecords = [], leftEnvironment, rightEnvironment) {
+  const environmentFiles = new Map();
+
+  for (const fileRecord of fileRecords) {
+    const environment = getEnvironmentName(fileRecord.path);
+    const relativePath = getEnvironmentRelativePath(fileRecord.path);
+
+    if (!environment || !relativePath) {
+      continue;
+    }
+
+    if (!environmentFiles.has(environment)) {
+      environmentFiles.set(environment, new Map());
+    }
+
+    environmentFiles.get(environment).set(relativePath, fileRecord);
+  }
+
+  const leftFiles = environmentFiles.get(leftEnvironment) || new Map();
+  const rightFiles = environmentFiles.get(rightEnvironment) || new Map();
+  const allRelativePaths = Array.from(
+    new Set([...leftFiles.keys(), ...rightFiles.keys()])
+  ).sort((left, right) => left.localeCompare(right));
+  const files = [];
+  const leftOnlyFiles = [];
+  const rightOnlyFiles = [];
+
+  for (const relativePath of allRelativePaths) {
+    const leftFile = leftFiles.get(relativePath);
+    const rightFile = rightFiles.get(relativePath);
+
+    if (!leftFile) {
+      rightOnlyFiles.push({
+        relativePath,
+        fileName: rightFile?.name || relativePath.split("/").pop() || relativePath,
+        path: rightFile?.path || ""
+      });
+      continue;
+    }
+
+    if (!rightFile) {
+      leftOnlyFiles.push({
+        relativePath,
+        fileName: leftFile.name,
+        path: leftFile.path
+      });
+      continue;
+    }
+
+    const diff = comparePropertiesData(leftFile.entries, rightFile.entries);
+
+    if (!hasDiffContent(diff)) {
+      continue;
+    }
+
+    files.push({
+      relativePath,
+      fileName: leftFile.name,
+      leftPath: leftFile.path,
+      rightPath: rightFile.path,
+      diff
+    });
+  }
+
+  return {
+    leftEnvironment,
+    rightEnvironment,
+    files,
+    leftOnlyFiles,
+    rightOnlyFiles,
+    summary: {
+      comparedFileCount: allRelativePaths.length,
+      changedFileCount: files.length,
+      leftOnlyFileCount: leftOnlyFiles.length,
+      rightOnlyFileCount: rightOnlyFiles.length
+    }
   };
 }
 
@@ -768,6 +891,225 @@ function CompareView({
   );
 }
 
+function ReporterView({
+  environmentOptions,
+  error,
+  loading,
+  onRunReport,
+  reportData,
+  reporterState,
+  setReporterState
+}) {
+  const canRunReport =
+    reporterState.left &&
+    reporterState.right &&
+    reporterState.left !== reporterState.right &&
+    !loading;
+
+  return (
+    <div className="content-stack">
+      <section className="hero-card">
+        <p className="eyebrow">Reporter</p>
+        <h2>Environment difference report</h2>
+        <p className="hero-note">
+          Choose two environments to compare matching property files across the full
+          folder tree and surface the differences that could explain a misconfiguration.
+        </p>
+      </section>
+
+      <section className="reporter-toolbar">
+        <div className="picker-shell">
+          <span className="picker-label">Environment A</span>
+          <select
+            className="value-select"
+            onChange={(event) =>
+              setReporterState((current) => ({ ...current, left: event.target.value }))
+            }
+            value={reporterState.left}
+          >
+            <option value="">Select an environment</option>
+            {environmentOptions.map((environment) => (
+              <option key={`left-${environment}`} value={environment}>
+                {environment}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="picker-shell">
+          <span className="picker-label">Environment B</span>
+          <select
+            className="value-select"
+            onChange={(event) =>
+              setReporterState((current) => ({ ...current, right: event.target.value }))
+            }
+            value={reporterState.right}
+          >
+            <option value="">Select an environment</option>
+            {environmentOptions.map((environment) => (
+              <option key={`right-${environment}`} value={environment}>
+                {environment}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          className="mode-primary"
+          disabled={!canRunReport}
+          onClick={onRunReport}
+          type="button"
+        >
+          {loading ? "Building report..." : "Report Differences"}
+        </button>
+      </section>
+
+      {reporterState.left &&
+        reporterState.right &&
+        reporterState.left === reporterState.right && (
+          <div className="panel-shell error-box">
+            Choose two different environments to build a report.
+          </div>
+        )}
+
+      {loading && <div className="panel-shell">Building environment report...</div>}
+      {error && <div className="panel-shell error-box">{error}</div>}
+
+      {!loading && !error && reportData && (
+        <>
+          <section className="report-summary-grid">
+            <div className="summary-card">
+              <h4>Changed files</h4>
+              <p className="report-stat">{reportData.summary.changedFileCount}</p>
+              <p className="empty-copy">
+                Matching files with missing keys or different values.
+              </p>
+            </div>
+            <div className="summary-card">
+              <h4>{reportData.leftEnvironment} only</h4>
+              <p className="report-stat">{reportData.summary.leftOnlyFileCount}</p>
+              <p className="empty-copy">Files present only in the left environment.</p>
+            </div>
+            <div className="summary-card">
+              <h4>{reportData.rightEnvironment} only</h4>
+              <p className="report-stat">{reportData.summary.rightOnlyFileCount}</p>
+              <p className="empty-copy">Files present only in the right environment.</p>
+            </div>
+          </section>
+
+          {!reportData.files.length &&
+            !reportData.leftOnlyFiles.length &&
+            !reportData.rightOnlyFiles.length && (
+              <div className="panel-shell">
+                No differences were found between these environments.
+              </div>
+            )}
+
+          {Boolean(reportData.leftOnlyFiles.length || reportData.rightOnlyFiles.length) && (
+            <section className="compare-summary-grid">
+              <div className="summary-card">
+                <h4>Files only in {reportData.leftEnvironment}</h4>
+                {reportData.leftOnlyFiles.length ? (
+                  reportData.leftOnlyFiles.map((file) => (
+                    <div className="summary-item" key={`left-only-${file.relativePath}`}>
+                      <span className="property-key">{file.fileName}</span>
+                      <span>{file.relativePath}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="empty-copy">No environment-specific files.</p>
+                )}
+              </div>
+
+              <div className="summary-card">
+                <h4>Files only in {reportData.rightEnvironment}</h4>
+                {reportData.rightOnlyFiles.length ? (
+                  reportData.rightOnlyFiles.map((file) => (
+                    <div className="summary-item" key={`right-only-${file.relativePath}`}>
+                      <span className="property-key">{file.fileName}</span>
+                      <span>{file.relativePath}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="empty-copy">No environment-specific files.</p>
+                )}
+              </div>
+            </section>
+          )}
+
+          {reportData.files.map((file) => (
+            <section className="report-card" key={file.relativePath}>
+              <div className="card-topline">
+                <div>
+                  <p className="eyebrow">Changed file</p>
+                  <h3>{file.fileName}</h3>
+                  <p className="hero-path">{file.relativePath}</p>
+                </div>
+              </div>
+
+              <div className="report-diff-grid">
+                <div className="summary-card">
+                  <h4>Only in {reportData.leftEnvironment}</h4>
+                  {file.diff.leftOnly.length ? (
+                    file.diff.leftOnly.map((entry) => (
+                      <div
+                        className="summary-item"
+                        key={`${file.relativePath}-left-only-${entry.key}`}
+                      >
+                        <span className="property-key">{entry.key}</span>
+                        <span>{entry.value || "(empty)"}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="empty-copy">No unique properties.</p>
+                  )}
+                </div>
+
+                <div className="summary-card">
+                  <h4>Only in {reportData.rightEnvironment}</h4>
+                  {file.diff.rightOnly.length ? (
+                    file.diff.rightOnly.map((entry) => (
+                      <div
+                        className="summary-item"
+                        key={`${file.relativePath}-right-only-${entry.key}`}
+                      >
+                        <span className="property-key">{entry.key}</span>
+                        <span>{entry.value || "(empty)"}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="empty-copy">No unique properties.</p>
+                  )}
+                </div>
+
+                <div className="summary-card summary-wide">
+                  <h4>Different values</h4>
+                  {file.diff.valueDifferences.length ? (
+                    file.diff.valueDifferences.map((entry) => (
+                      <div
+                        className="summary-item"
+                        key={`${file.relativePath}-diff-${entry.key}`}
+                      >
+                        <span className="property-key">{entry.key}</span>
+                        <span>
+                          {reportData.leftEnvironment}: {entry.leftValue || "(empty)"} |{" "}
+                          {reportData.rightEnvironment}: {entry.rightValue || "(empty)"}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="empty-copy">No differing shared values.</p>
+                  )}
+                </div>
+              </div>
+            </section>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 function GuideModal({ onClose }) {
   const sections = [
     {
@@ -784,6 +1126,11 @@ function GuideModal({ onClose }) {
       title: "Compare view",
       body:
         "Use Compare to pick two property files and review them side by side. The file pickers are searchable tree browsers. Each side shows the selected file, properties unique to that file, properties missing from that file, and shared properties whose values differ."
+    },
+    {
+      title: "Reporter view",
+      body:
+        "Use Reporter to compare two environments at once. The report matches files by their shared path inside each environment folder and highlights missing files, missing keys, and different values."
     },
     {
       title: "Refresh and folder changes",
@@ -839,6 +1186,7 @@ function Toast({ message }) {
 
 export default function App() {
   const [treeData, setTreeData] = useState(null);
+  const [allFiles, setAllFiles] = useState([]);
   const [scanRoot, setScanRoot] = useState("");
   const [dataSource, setDataSource] = useState("server");
   const [clientData, setClientData] = useState(null);
@@ -854,18 +1202,55 @@ export default function App() {
   const [compareData, setCompareData] = useState(null);
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState("");
+  const [reporterState, setReporterState] = useState({ left: "", right: "" });
+  const [reporterData, setReporterData] = useState(null);
+  const [reporterLoading, setReporterLoading] = useState(false);
+  const [reporterError, setReporterError] = useState("");
   const [showIntro, setShowIntro] = useState(true);
   const [showGuide, setShowGuide] = useState(false);
   const [folderSelectionStage, setFolderSelectionStage] = useState("idle");
   const [pendingFolderName, setPendingFolderName] = useState("");
   const [startupError, setStartupError] = useState("");
   const [toastMessage, setToastMessage] = useState("");
+  const environmentOptions = useMemo(() => collectEnvironmentOptions(allFiles), [allFiles]);
+
+  useEffect(() => {
+    if (environmentOptions.length < 2) {
+      setReporterState({ left: environmentOptions[0] || "", right: "" });
+      setReporterData(null);
+      setReporterError("");
+      return;
+    }
+
+    setReporterState((current) => {
+      const safeLeft = environmentOptions.includes(current.left)
+        ? current.left
+        : environmentOptions[0];
+      const currentRightValid =
+        current.right && current.right !== safeLeft && environmentOptions.includes(current.right);
+      const safeRight = currentRightValid
+        ? current.right
+        : environmentOptions.find((environment) => environment !== safeLeft) || "";
+
+      if (safeLeft === current.left && safeRight === current.right) {
+        return current;
+      }
+
+      return {
+        left: safeLeft,
+        right: safeRight
+      };
+    });
+    setReporterData(null);
+    setReporterError("");
+  }, [environmentOptions]);
 
   useEffect(() => {
     fetch("/api/tree")
       .then((response) => response.json())
       .then((data) => {
         setTreeData(data.tree);
+        setAllFiles(data.files || []);
         setScanRoot(data.scanRoot || "");
         setDataSource("server");
         const firstFile = data.files[0]?.path || "";
@@ -1067,6 +1452,7 @@ export default function App() {
       scanDirectoryHandle(selectedDirectoryHandle)
         .then((scanned) => {
           setTreeData(scanned.tree);
+          setAllFiles(scanned.files);
           setClientData({
             fileContents: scanned.fileContents,
             suggestionIndex: scanned.suggestionIndex
@@ -1097,6 +1483,7 @@ export default function App() {
       .then((response) => response.json())
       .then((data) => {
         setTreeData(data.tree);
+        setAllFiles(data.files || []);
         setScanRoot(data.scanRoot || "");
         setValueOverrides({});
       })
@@ -1123,6 +1510,7 @@ export default function App() {
         const scanned = await scanDirectoryHandle(directoryHandle);
 
         setTreeData(scanned.tree);
+        setAllFiles(scanned.files);
         setScanRoot(directoryHandle.name);
         setDataSource("client");
         setSelectedDirectoryHandle(directoryHandle);
@@ -1165,6 +1553,56 @@ export default function App() {
     setShowIntro(true);
   }
 
+  function handleRunReporter() {
+    if (
+      !reporterState.left ||
+      !reporterState.right ||
+      reporterState.left === reporterState.right
+    ) {
+      return;
+    }
+
+    setReporterLoading(true);
+    setReporterError("");
+
+    if (dataSource === "client" && clientData) {
+      try {
+        const report = buildReporterData(
+          Array.from(clientData.fileContents.values()),
+          reporterState.left,
+          reporterState.right
+        );
+        setReporterData(report);
+      } catch (error) {
+        setReporterError(error.message || "Unable to build the environment report.");
+      } finally {
+        setReporterLoading(false);
+      }
+
+      return;
+    }
+
+    fetch(
+      `/api/report?leftEnvironment=${encodeURIComponent(
+        reporterState.left
+      )}&rightEnvironment=${encodeURIComponent(reporterState.right)}`
+    )
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        setReporterData(data);
+      })
+      .catch((error) => {
+        setReporterError(error.message || "Unable to build the environment report.");
+      })
+      .finally(() => {
+        setReporterLoading(false);
+      });
+  }
+
   if (showIntro) {
     return (
       <IntroScreen
@@ -1201,6 +1639,13 @@ export default function App() {
               <button onClick={() => setShowGuide(true)} type="button">
                 User Guide
               </button>
+              <button
+                className={mode === "reporter" ? "active" : ""}
+                onClick={() => setMode("reporter")}
+                type="button"
+              >
+                Reporter
+              </button>
               <button onClick={handleChangeFolder} type="button">
                 Change Folder
               </button>
@@ -1231,7 +1676,7 @@ export default function App() {
               onCopyProperties={handleCopyProperties}
               onEntryValueChange={handleEntryValueChange}
             />
-          ) : (
+          ) : mode === "compare" ? (
             <CompareView
               compareData={compareData}
               compareState={compareState}
@@ -1241,6 +1686,16 @@ export default function App() {
               onEntryValueChange={handleEntryValueChange}
               setCompareState={setCompareState}
               tree={treeData}
+            />
+          ) : (
+            <ReporterView
+              environmentOptions={environmentOptions}
+              error={reporterError}
+              loading={reporterLoading}
+              onRunReport={handleRunReporter}
+              reportData={reporterData}
+              reporterState={reporterState}
+              setReporterState={setReporterState}
             />
           )}
         </main>

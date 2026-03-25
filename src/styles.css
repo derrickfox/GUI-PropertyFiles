@@ -325,7 +325,8 @@ h3 {
 .property-table,
 .panel-shell,
 .compare-card,
-.summary-card {
+.summary-card,
+.report-card {
   background: rgba(255, 255, 255, 0.8);
   border: 1px solid rgba(28, 36, 48, 0.08);
   border-radius: 22px;
@@ -335,7 +336,8 @@ h3 {
 .hero-card,
 .panel-shell,
 .compare-card,
-.summary-card {
+.summary-card,
+.report-card {
   padding: 20px;
 }
 
@@ -420,6 +422,13 @@ h3 {
 .compare-pickers {
   align-items: end;
   position: relative;
+}
+
+.reporter-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
 }
 
 .picker-shell {
@@ -522,6 +531,27 @@ h3 {
   gap: 20px;
 }
 
+.report-summary-grid,
+.report-diff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.report-stat {
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1;
+  font-weight: 700;
+  color: #21354a;
+  margin: 10px 0 8px;
+}
+
 .compare-table {
   display: flex;
   flex-direction: column;
@@ -587,6 +617,11 @@ h3 {
   .compare-grid {
     grid-template-columns: 1fr;
   }
+
+  .report-summary-grid,
+  .report-diff-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -616,11 +651,16 @@ h3 {
 
   .topbar,
   .compare-pickers,
+  .reporter-toolbar,
   .compare-row,
   .property-table-header,
   .compare-table-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .reporter-toolbar {
+    display: flex;
   }
 
   .property-row {

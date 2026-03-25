@@ -24,6 +24,30 @@ function normalizeForClient(fullPath) {
   return path.relative(scanRoot, fullPath).split(path.sep).join("/");
 }
 
+function getPathSegments(clientPath = "") {
+  return clientPath.split("/").filter(Boolean).filter((segment) => segment !== ".");
+}
+
+function getEnvironmentName(clientPath) {
+  const segments = getPathSegments(clientPath);
+
+  if (segments.length < 2) {
+    return "";
+  }
+
+  return segments[0];
+}
+
+function getEnvironmentRelativePath(clientPath) {
+  const segments = getPathSegments(clientPath);
+
+  if (segments.length < 2) {
+    return "";
+  }
+
+  return segments.slice(1).join("/");
+}
+
 function resolveClientPath(clientPath) {
   const resolved = path.resolve(scanRoot, clientPath);
   const relative = path.relative(scanRoot, resolved);
@@ -128,6 +152,12 @@ function compareProperties(leftEntries, rightEntries) {
   };
 }
 
+function hasDiffContent(diff) {
+  return Boolean(
+    diff.leftOnly.length || diff.rightOnly.length || diff.valueDifferences.length
+  );
+}
+
 function scanDirectory(currentDirectory) {
   const directoryEntries = fs.readdirSync(currentDirectory, { withFileTypes: true });
   const children = [];
@@ -209,6 +239,87 @@ function buildIndex() {
     tree,
     files,
     suggestionIndex
+  };
+}
+
+function buildEnvironmentReport(leftEnvironment, rightEnvironment) {
+  const environmentFiles = new Map();
+
+  for (const file of indexCache.files) {
+    const environment = getEnvironmentName(file.path);
+    const relativePath = getEnvironmentRelativePath(file.path);
+
+    if (!environment || !relativePath) {
+      continue;
+    }
+
+    if (!environmentFiles.has(environment)) {
+      environmentFiles.set(environment, new Map());
+    }
+
+    environmentFiles.get(environment).set(relativePath, file);
+  }
+
+  const leftFiles = environmentFiles.get(leftEnvironment) || new Map();
+  const rightFiles = environmentFiles.get(rightEnvironment) || new Map();
+  const allRelativePaths = Array.from(
+    new Set([...leftFiles.keys(), ...rightFiles.keys()])
+  ).sort((a, b) => a.localeCompare(b));
+  const files = [];
+  const leftOnlyFiles = [];
+  const rightOnlyFiles = [];
+
+  for (const relativePath of allRelativePaths) {
+    const leftFile = leftFiles.get(relativePath);
+    const rightFile = rightFiles.get(relativePath);
+
+    if (!leftFile) {
+      rightOnlyFiles.push({
+        relativePath,
+        fileName: rightFile?.name || path.basename(relativePath),
+        path: rightFile?.path || ""
+      });
+      continue;
+    }
+
+    if (!rightFile) {
+      leftOnlyFiles.push({
+        relativePath,
+        fileName: leftFile.name,
+        path: leftFile.path
+      });
+      continue;
+    }
+
+    const leftEntries = parseProperties(fs.readFileSync(resolveClientPath(leftFile.path), "utf8")).entries;
+    const rightEntries = parseProperties(fs.readFileSync(resolveClientPath(rightFile.path), "utf8")).entries;
+    const diff = compareProperties(leftEntries, rightEntries);
+
+    if (!hasDiffContent(diff)) {
+      continue;
+    }
+
+    files.push({
+      relativePath,
+      fileName: leftFile.name,
+      leftPath: leftFile.path,
+      rightPath: rightFile.path,
+      diff
+    });
+  }
+
+  return {
+    leftEnvironment,
+    rightEnvironment,
+    files,
+    leftOnlyFiles,
+    rightOnlyFiles,
+    summary: {
+      comparedFileCount: allRelativePaths.length,
+      changedFileCount: files.length,
+      leftOnlyFileCount: leftOnlyFiles.length,
+      rightOnlyFileCount: rightOnlyFiles.length
+    }
   };
 }
 
@@ -332,6 +443,24 @@ function routeRequest(request, response) {
         },
         diff
       });
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/report") {
+      const leftEnvironment = requestUrl.searchParams.get("leftEnvironment");
+      const rightEnvironment = requestUrl.searchParams.get("rightEnvironment");
+
+      if (!leftEnvironment || !rightEnvironment) {
+        sendJson(response, 400, { error: "Both environments are required." });
+        return;
+      }
+
+      if (leftEnvironment === rightEnvironment) {
+        sendJson(response, 400, { error: "Choose two different environments." });
+        return;
+      }
+
+      sendJson(response, 200, buildEnvironmentReport(leftEnvironment, rightEnvironment));
       return;
     }
 
