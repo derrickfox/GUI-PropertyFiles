@@ -101,6 +101,130 @@ select {
   line-height: 1.6;
 }
 
+.guide-view {
+  padding-bottom: 32px;
+}
+
+.guide-hero {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(247, 250, 252, 0.84)),
+    radial-gradient(circle at top right, rgba(255, 221, 167, 0.28), transparent 34%);
+}
+
+.guide-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.4fr);
+  gap: 20px;
+}
+
+.guide-nav-card,
+.guide-setup-card,
+.guide-section-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-checklist,
+.guide-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guide-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  color: #445466;
+  line-height: 1.55;
+}
+
+.guide-step-index {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  margin-top: 6px;
+  background: linear-gradient(180deg, #d39b47, #96784b);
+  box-shadow: 0 0 0 4px rgba(211, 155, 71, 0.12);
+}
+
+.guide-command-grid,
+.guide-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.guide-command-card {
+  border: 1px solid rgba(28, 36, 48, 0.08);
+  border-radius: 18px;
+  background: rgba(32, 52, 76, 0.04);
+  padding: 16px;
+}
+
+.guide-command-card pre,
+.guide-command-card p {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #445466;
+}
+
+.guide-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.guide-toggle-group button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: rgba(32, 52, 76, 0.08);
+  color: #445466;
+  cursor: pointer;
+}
+
+.guide-toggle-group .active {
+  background: #20344c;
+  color: #fff;
+}
+
+.guide-demo-shell {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.5fr);
+  gap: 16px;
+}
+
+.guide-demo-file,
+.guide-demo-property {
+  border: 1px solid rgba(28, 36, 48, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 16px;
+}
+
+.guide-demo-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.guide-pill {
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(32, 52, 76, 0.08);
+  color: #445466;
+}
+
+.guide-pill-current {
+  background: #20344c;
+  color: #fff;
+}
+
 .intro-screen {
   min-height: 100vh;
   display: grid;
@@ -691,6 +815,11 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .guide-layout,
+  .guide-demo-shell {
+    grid-template-columns: 1fr;
+  }
+
   .report-summary-grid,
   .report-diff-grid {
     grid-template-columns: 1fr;
@@ -744,6 +873,11 @@ h3 {
 
   .reporter-toolbar {
     display: flex;
+  }
+
+  .guide-command-grid,
+  .guide-compare-grid {
+    grid-template-columns: 1fr;
   }
 
   .property-row {

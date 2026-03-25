@@ -1276,68 +1276,319 @@ function ReporterView({
   );
 }
 
-function GuideModal({ onClose }) {
-  const sections = [
+function GuideView() {
+  const [inspectExample, setInspectExample] = useState("queryTimeout");
+  const [compareExample, setCompareExample] = useState("missing");
+  const [reporterExample, setReporterExample] = useState("values");
+
+  const inspectExamples = {
+    queryTimeout: {
+      key: "query.timeout.ms",
+      current: "30000",
+      known: ["15000", "30000", "60000"],
+      note:
+        "Inspect is best when you know the file you care about and want to quickly see the values used for the same property in similar files."
+    },
+    serviceUrl: {
+      key: "auth.service.url",
+      current: "https://api-stage.example.org/auth",
+      known: [
+        "https://api-dev.example.org/auth",
+        "https://api-stage.example.org/auth",
+        "https://api-prod.example.org/auth"
+      ],
+      note:
+        "The value menu helps you spot whether the active value looks out of family compared with the same property elsewhere."
+    }
+  };
+
+  const compareExamples = {
+    missing: {
+      left: "api/application.properties",
+      right: "api-dash/application.properties",
+      points: [
+        "Only in left: `feature.audit.enabled=true`",
+        "Only in right: no extra properties",
+        "Different value: `server.port` is `8080` vs `8090`"
+      ]
+    },
+    values: {
+      left: "fitbir/qt-rdf.properties",
+      right: "fitbir/qt-rdf.properties",
+      points: [
+        "Same property exists in both files",
+        "The value itself changed between environments",
+        "Use this when you already know the matching file pair you want to investigate"
+      ]
+    }
+  };
+
+  const reporterExamples = {
+    values: {
+      title: "Environment-wide misconfiguration hunt",
+      points: [
+        "Pick `api` and `api-dash`",
+        "Run `Report Differences`",
+        "Open a `Different values` card to highlight the exact changed characters"
+      ]
+    },
+    missingFiles: {
+      title: "Find files that only exist in one environment",
+      points: [
+        "The summary shows files only in Environment A or B",
+        "This helps catch missing deployments or one-off config files",
+        "Then inspect the matching environment folder to decide whether the difference is expected"
+      ]
+    }
+  };
+
+  const startupSteps = [
+    "Run `npm install` once, then `npm run dev`.",
+    "Open `http://localhost:5173` in a Chromium-based browser such as Chrome or Edge.",
+    "On the intro screen, either use the detected folder or choose a different parent folder.",
+    "Your folder should contain environment folders at the top level, each with matching `.properties` filenames underneath."
+  ];
+
+  const troubleshootingItems = [
     {
-      title: "Getting started",
+      title: "The browser folder picker does not open or is unavailable",
       body:
-        "When the app opens, choose the current detected folder or pick a different parent folder. The app only reads files and never writes changes back to disk."
+        "Use Chrome or Edge. The app relies on the browser's directory picker, which is best supported in Chromium-based browsers."
     },
     {
-      title: "Inspect view",
+      title: "The intro screen says it is opening or scanning for too long",
       body:
-        "Use Inspect to browse one property file at a time. The left sidebar shows the folder tree. When you open a file, the properties are displayed alphabetically, and each value menu shows other known values found in matching files with the same filename and property key."
+        "Large folder trees can take time. Wait for the scanning message to finish. If it never completes, try a smaller root folder that contains only the environment directories you want to compare."
     },
     {
-      title: "Compare view",
+      title: "The dev server starts but the page does not load",
       body:
-        "Use Compare to pick two property files and review them side by side. The file pickers are searchable tree browsers. Each side shows the selected file, properties unique to that file, properties missing from that file, and shared properties whose values differ."
+        "Make sure both the API and Vite client are running. The normal `npm run dev` script starts both together and automatically chooses an available API port beginning at `4177`."
     },
     {
-      title: "Reporter view",
+      title: "Build or dev startup fails with an `EPERM` spawn error",
       body:
-        "Use Reporter to compare two environments at once. The report matches files by their shared path inside each environment folder and highlights missing files, missing keys, and different values."
+        "This can happen in locked-down environments where `esbuild` cannot spawn its worker process. Run the app in a normal local terminal outside the restricted sandbox or use a machine without that execution restriction."
     },
     {
-      title: "Refresh and folder changes",
+      title: "PowerShell or shell syntax for `SCAN_ROOT` is confusing",
       body:
-        "Use Refresh after external file changes so the app rescans the current folder. Use Change Folder any time you want to switch to a different parent config folder."
+        "On macOS/Linux use `export SCAN_ROOT=\"/path/to/root\"`. On Windows PowerShell use `$env:SCAN_ROOT='C:\\path\\to\\root'`. Then run `npm run dev` in the same terminal session."
     },
     {
-      title: "What counts as read-only",
+      title: "Reporter does not show useful matches",
       body:
-        "This tool is meant to guide developers, not edit environments. Sorting and compare results affect only the display inside the app. Your underlying property files are not modified."
+        "Reporter assumes matching files keep the same relative path and filename inside each environment folder. If one environment uses a different layout or renamed files, those entries will appear as environment-only files instead of direct comparisons."
     }
   ];
 
+  const inspectSample = inspectExamples[inspectExample];
+  const compareSample = compareExamples[compareExample];
+  const reporterSample = reporterExamples[reporterExample];
+
   return (
-    <div className="modal-backdrop" onClick={onClose} role="presentation">
-      <div
-        aria-labelledby="guide-title"
-        aria-modal="true"
-        className="guide-modal"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <div className="guide-header">
-          <div>
-            <p className="eyebrow">User Guide</p>
-            <h2 id="guide-title">How to use Config Explorer</h2>
+    <div className="content-stack guide-view">
+      <section className="hero-card guide-hero">
+        <p className="eyebrow">User Guide</p>
+        <h2>Learn the app without trial and error</h2>
+        <p className="hero-note">
+          Config Explorer is read-only. It helps you inspect property files, compare
+          specific file pairs, and generate environment-wide reports without changing
+          anything on disk.
+        </p>
+      </section>
+
+      <section className="guide-layout">
+        <div className="summary-card guide-nav-card">
+          <h3>What each view is for</h3>
+          <div className="guide-checklist">
+            <div className="summary-item">
+              <span className="property-key">Inspect</span>
+              <span>Open one file and explore known values for its properties.</span>
+            </div>
+            <div className="summary-item">
+              <span className="property-key">Compare</span>
+              <span>Choose two specific files and review missing keys and value changes.</span>
+            </div>
+            <div className="summary-item">
+              <span className="property-key">Reporter</span>
+              <span>Compare two whole environments using matching relative file paths.</span>
+            </div>
+            <div className="summary-item">
+              <span className="property-key">Refresh</span>
+              <span>Re-scan the current folder after outside file changes.</span>
+            </div>
+            <div className="summary-item">
+              <span className="property-key">Change Folder</span>
+              <span>Pick a different parent folder when switching projects or roots.</span>
+            </div>
           </div>
-          <button className="ghost-button" onClick={onClose} type="button">
-            Close
-          </button>
         </div>
 
+        <div className="summary-card guide-setup-card">
+          <h3>Setup guide</h3>
+          <div className="guide-step-list">
+            {startupSteps.map((step) => (
+              <div className="guide-step" key={step}>
+                <span className="guide-step-index" />
+                <span>{step}</span>
+              </div>
+            ))}
+          </div>
+          <div className="guide-command-grid">
+            <div className="guide-command-card">
+              <h4>Basic start</h4>
+              <pre>npm install{"\n"}npm run dev</pre>
+            </div>
+            <div className="guide-command-card">
+              <h4>macOS / Linux</h4>
+              <pre>export SCAN_ROOT="/path/to/root"{"\n"}npm run dev</pre>
+            </div>
+            <div className="guide-command-card">
+              <h4>Windows PowerShell</h4>
+              <pre>$env:SCAN_ROOT='C:\path\to\root'{"\n"}npm run dev</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="summary-card guide-section-card">
+        <div className="card-topline">
+          <div>
+            <p className="eyebrow">Interactive Example</p>
+            <h3>Inspect view</h3>
+          </div>
+          <div className="guide-toggle-group">
+            <button
+              className={inspectExample === "queryTimeout" ? "active" : ""}
+              onClick={() => setInspectExample("queryTimeout")}
+              type="button"
+            >
+              Timeout
+            </button>
+            <button
+              className={inspectExample === "serviceUrl" ? "active" : ""}
+              onClick={() => setInspectExample("serviceUrl")}
+              type="button"
+            >
+              URL
+            </button>
+          </div>
+        </div>
+        <p className="hero-note">{inspectSample.note}</p>
+        <div className="guide-demo-shell">
+          <div className="guide-demo-file">
+            <p className="eyebrow">Selected file</p>
+            <h4>application.properties</h4>
+            <p className="hero-path">api/{inspectExample === "queryTimeout" ? "core" : "auth"}</p>
+          </div>
+          <div className="guide-demo-property">
+            <span className="property-key">{inspectSample.key}</span>
+            <div className="guide-demo-value">
+              <span className="guide-pill guide-pill-current">
+                Current: {inspectSample.current}
+              </span>
+              {inspectSample.known.map((value) => (
+                <span className="guide-pill" key={value}>
+                  {value}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="summary-card guide-section-card">
+        <div className="card-topline">
+          <div>
+            <p className="eyebrow">Interactive Example</p>
+            <h3>Compare view</h3>
+          </div>
+          <div className="guide-toggle-group">
+            <button
+              className={compareExample === "missing" ? "active" : ""}
+              onClick={() => setCompareExample("missing")}
+              type="button"
+            >
+              Missing keys
+            </button>
+            <button
+              className={compareExample === "values" ? "active" : ""}
+              onClick={() => setCompareExample("values")}
+              type="button"
+            >
+              Value drift
+            </button>
+          </div>
+        </div>
+        <div className="guide-compare-grid">
+          <div className="guide-command-card">
+            <h4>Left file</h4>
+            <p>{compareSample.left}</p>
+          </div>
+          <div className="guide-command-card">
+            <h4>Right file</h4>
+            <p>{compareSample.right}</p>
+          </div>
+        </div>
+        <div className="guide-checklist">
+          {compareSample.points.map((point) => (
+            <div className="summary-item" key={point}>
+              <span className="property-key">What to look for</span>
+              <span>{point}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="summary-card guide-section-card">
+        <div className="card-topline">
+          <div>
+            <p className="eyebrow">Interactive Example</p>
+            <h3>Reporter view</h3>
+          </div>
+          <div className="guide-toggle-group">
+            <button
+              className={reporterExample === "values" ? "active" : ""}
+              onClick={() => setReporterExample("values")}
+              type="button"
+            >
+              Misconfiguration
+            </button>
+            <button
+              className={reporterExample === "missingFiles" ? "active" : ""}
+              onClick={() => setReporterExample("missingFiles")}
+              type="button"
+            >
+              Missing files
+            </button>
+          </div>
+        </div>
+        <div className="guide-command-card">
+          <h4>{reporterSample.title}</h4>
+          <div className="guide-step-list">
+            {reporterSample.points.map((point) => (
+              <div className="guide-step" key={point}>
+                <span className="guide-step-index" />
+                <span>{point}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="summary-card guide-section-card">
+        <p className="eyebrow">Troubleshooting</p>
+        <h3>Common snags and fixes</h3>
         <div className="guide-sections">
-          {sections.map((section, index) => (
-            <details className="guide-section" key={section.title} open={index === 0}>
-              <summary>{section.title}</summary>
-              <p>{section.body}</p>
+          {troubleshootingItems.map((item, index) => (
+            <details className="guide-section" key={item.title} open={index === 0}>
+              <summary>{item.title}</summary>
+              <p>{item.body}</p>
             </details>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
@@ -1373,7 +1624,6 @@ export default function App() {
   const [reporterLoading, setReporterLoading] = useState(false);
   const [reporterError, setReporterError] = useState("");
   const [showIntro, setShowIntro] = useState(true);
-  const [showGuide, setShowGuide] = useState(false);
   const [folderSelectionStage, setFolderSelectionStage] = useState("idle");
   const [pendingFolderName, setPendingFolderName] = useState("");
   const [startupError, setStartupError] = useState("");
@@ -1802,7 +2052,11 @@ export default function App() {
               <p className="hero-path">{scanRoot}</p>
             </div>
             <div className="mode-switch">
-              <button onClick={() => setShowGuide(true)} type="button">
+              <button
+                className={mode === "guide" ? "active" : ""}
+                onClick={() => setMode("guide")}
+                type="button"
+              >
                 User Guide
               </button>
               <button
@@ -1834,7 +2088,9 @@ export default function App() {
 
           {startupError && <div className="panel-shell error-box">{startupError}</div>}
 
-          {mode === "inspect" ? (
+          {mode === "guide" ? (
+            <GuideView />
+          ) : mode === "inspect" ? (
             <InspectView
               error={fileError}
               fileData={fileData}
@@ -1867,7 +2123,6 @@ export default function App() {
         </main>
       </div>
 
-      {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {toastMessage && <Toast message={toastMessage} />}
     </>
   );
