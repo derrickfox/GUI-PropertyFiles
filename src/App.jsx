@@ -40,6 +40,97 @@ function collectEnvironmentOptions(files = []) {
   return Array.from(environments).sort((left, right) => left.localeCompare(right));
 }
 
+function normalizeDiffValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value);
+}
+
+function getInlineDiffParts(leftValue, rightValue) {
+  const left = normalizeDiffValue(leftValue);
+  const right = normalizeDiffValue(rightValue);
+  let prefixLength = 0;
+
+  while (
+    prefixLength < left.length &&
+    prefixLength < right.length &&
+    left[prefixLength] === right[prefixLength]
+  ) {
+    prefixLength += 1;
+  }
+
+  let leftSuffixIndex = left.length - 1;
+  let rightSuffixIndex = right.length - 1;
+
+  while (
+    leftSuffixIndex >= prefixLength &&
+    rightSuffixIndex >= prefixLength &&
+    left[leftSuffixIndex] === right[rightSuffixIndex]
+  ) {
+    leftSuffixIndex -= 1;
+    rightSuffixIndex -= 1;
+  }
+
+  return {
+    left: {
+      prefix: left.slice(0, prefixLength),
+      changed: left.slice(prefixLength, leftSuffixIndex + 1),
+      suffix: left.slice(leftSuffixIndex + 1)
+    },
+    right: {
+      prefix: right.slice(0, prefixLength),
+      changed: right.slice(prefixLength, rightSuffixIndex + 1),
+      suffix: right.slice(rightSuffixIndex + 1)
+    }
+  };
+}
+
+function InlineDiffText({ value, emptyLabel = "(empty)" }) {
+  const displayValue = value || emptyLabel;
+
+  return <span>{displayValue}</span>;
+}
+
+function InlineValueDiff({ leftLabel, leftValue, rightLabel, rightValue }) {
+  const diffParts = getInlineDiffParts(leftValue, rightValue);
+
+  function renderDiffValue(parts, fallbackValue) {
+    if (!parts.prefix && !parts.changed && !parts.suffix) {
+      return <InlineDiffText value={fallbackValue} />;
+    }
+
+    return (
+      <span className="diff-value-text">
+        {parts.prefix && <span>{parts.prefix}</span>}
+        {parts.changed && <mark className="diff-highlight">{parts.changed}</mark>}
+        {parts.suffix && <span>{parts.suffix}</span>}
+        {!parts.prefix && !parts.changed && !parts.suffix && (
+          <InlineDiffText value={fallbackValue} />
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <div className="inline-diff-block">
+      <div className="inline-diff-row">
+        <span className="inline-diff-label">{leftLabel}</span>
+        <span className="inline-diff-value">
+          {renderDiffValue(diffParts.left, leftValue)}
+        </span>
+      </div>
+      <div className="inline-diff-row">
+        <span className="inline-diff-label">{rightLabel}</span>
+        <span className="inline-diff-value">
+          {renderDiffValue(diffParts.right, rightValue)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function parsePropertyLine(line) {
   const trimmed = line.trim();
 
@@ -905,9 +996,22 @@ function ReporterView({
     reporterState.right &&
     reporterState.left !== reporterState.right &&
     !loading;
+  const [expandedCardId, setExpandedCardId] = useState("");
+
+  function handleCardToggle(cardId) {
+    setExpandedCardId((current) => (current === cardId ? "" : cardId));
+  }
 
   return (
-    <div className="content-stack">
+    <div
+      className="content-stack"
+      onClick={() => {
+        if (expandedCardId) {
+          setExpandedCardId("");
+        }
+      }}
+      role="presentation"
+    >
       <section className="hero-card">
         <p className="eyebrow">Reporter</p>
         <h2>Environment difference report</h2>
@@ -1048,16 +1152,33 @@ function ReporterView({
               </div>
 
               <div className="report-diff-grid">
-                <div className="summary-card">
+                <div
+                  aria-expanded={expandedCardId === `${file.relativePath}-left-only`}
+                  className={`summary-card report-diff-card ${
+                    expandedCardId === `${file.relativePath}-left-only` ? "expanded" : ""
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleCardToggle(`${file.relativePath}-left-only`);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleCardToggle(`${file.relativePath}-left-only`);
+                    }
+                  }}
+                >
                   <h4>Only in {reportData.leftEnvironment}</h4>
                   {file.diff.leftOnly.length ? (
                     file.diff.leftOnly.map((entry) => (
                       <div
-                        className="summary-item"
+                        className="summary-item report-entry"
                         key={`${file.relativePath}-left-only-${entry.key}`}
                       >
-                        <span className="property-key">{entry.key}</span>
-                        <span>{entry.value || "(empty)"}</span>
+                        <span className="property-key report-entry-key">{entry.key}</span>
+                        <span className="report-entry-value">{entry.value || "(empty)"}</span>
                       </div>
                     ))
                   ) : (
@@ -1065,16 +1186,33 @@ function ReporterView({
                   )}
                 </div>
 
-                <div className="summary-card">
+                <div
+                  aria-expanded={expandedCardId === `${file.relativePath}-right-only`}
+                  className={`summary-card report-diff-card ${
+                    expandedCardId === `${file.relativePath}-right-only` ? "expanded" : ""
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleCardToggle(`${file.relativePath}-right-only`);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleCardToggle(`${file.relativePath}-right-only`);
+                    }
+                  }}
+                >
                   <h4>Only in {reportData.rightEnvironment}</h4>
                   {file.diff.rightOnly.length ? (
                     file.diff.rightOnly.map((entry) => (
                       <div
-                        className="summary-item"
+                        className="summary-item report-entry"
                         key={`${file.relativePath}-right-only-${entry.key}`}
                       >
-                        <span className="property-key">{entry.key}</span>
-                        <span>{entry.value || "(empty)"}</span>
+                        <span className="property-key report-entry-key">{entry.key}</span>
+                        <span className="report-entry-value">{entry.value || "(empty)"}</span>
                       </div>
                     ))
                   ) : (
@@ -1082,19 +1220,47 @@ function ReporterView({
                   )}
                 </div>
 
-                <div className="summary-card summary-wide">
+                <div
+                  aria-expanded={expandedCardId === `${file.relativePath}-different-values`}
+                  className={`summary-card summary-wide report-diff-card ${
+                    expandedCardId === `${file.relativePath}-different-values`
+                      ? "expanded"
+                      : ""
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleCardToggle(`${file.relativePath}-different-values`);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleCardToggle(`${file.relativePath}-different-values`);
+                    }
+                  }}
+                >
                   <h4>Different values</h4>
                   {file.diff.valueDifferences.length ? (
                     file.diff.valueDifferences.map((entry) => (
                       <div
-                        className="summary-item"
+                        className="summary-item report-entry"
                         key={`${file.relativePath}-diff-${entry.key}`}
                       >
-                        <span className="property-key">{entry.key}</span>
-                        <span>
-                          {reportData.leftEnvironment}: {entry.leftValue || "(empty)"} |{" "}
-                          {reportData.rightEnvironment}: {entry.rightValue || "(empty)"}
-                        </span>
+                        <span className="property-key report-entry-key">{entry.key}</span>
+                        {expandedCardId === `${file.relativePath}-different-values` ? (
+                          <InlineValueDiff
+                            leftLabel={reportData.leftEnvironment}
+                            leftValue={entry.leftValue}
+                            rightLabel={reportData.rightEnvironment}
+                            rightValue={entry.rightValue}
+                          />
+                        ) : (
+                          <span className="report-entry-value">
+                            {reportData.leftEnvironment}: {entry.leftValue || "(empty)"} |{" "}
+                            {reportData.rightEnvironment}: {entry.rightValue || "(empty)"}
+                          </span>
+                        )}
                       </div>
                     ))
                   ) : (
